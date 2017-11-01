@@ -1,0 +1,574 @@
+---
+title: "combineTools_v2_neg"
+author: "Krista Longnecker"
+date: "October 12, 2017"
+output: html_document
+---
+
+```{r setStage, eval = TRUE, results = 'hide'}
+
+library(ggplot2)
+library(XLConnect)
+library(reshape2)
+
+source("FindAllWithinError.r")
+
+```
+
+
+This assumes that all the time consuming calculations have already been run and are the 'right' answer. 
+--> run Lumos_MDexp1b_pos_mspurity to get the aligned XCMS data
+--> run Lumos_MDexp1b_pos_miner to get the MS2 fragments for each sample (as RDdata files)
+
+One down side to this setup is that if I click 'knit' above, I can only get an HTML file with the same name as the Rmd file...
+```{r getData, eval = TRUE}
+
+ionMode <- 'neg'
+
+if (ionMode=='neg') {
+  load("MDv1b_mspurity_neg_2017.10.19_v1.Rimage")
+  NameOfFile <- 'Lumos_MDv1b_combined_neg.2017.10.19.Rimage'
+  saveFigures = 'combineTools_neg_figures/'
+  
+  mtab_names = cbind("biotin","citric acid",
+                    "l-malic acid","orotic acid",
+                    "succinic acid","taurocholic acid","thymidine")
+                    
+  
+  mtab_targets = c(243.080885877909,
+  191.019726127909,
+  133.014246827909,
+  155.009830147909,
+  117.019332207909,
+  514.284396227909,
+  241.082995067909)
+  
+} else if (ionMode == 'pos') {
+  load("MDv1b_mspurity_pos_2017.10.14_v1.Rimage")
+  
+  #set new file name for combined file:
+  NameOfFile <- 'Lumos_MDv1b_combined_pos.2017.10.20.Rimage'
+  saveFigures = 'combineTools_pos_figures/'
+  
+  mtab_names = cbind("biotin","caffeine","l-arginine","l-glutamine",
+                      "l-methionine","l-proline","l-serine","l-threonine",
+                      "n-acetyl-d-glucosamine")
+
+  #hack from list of metabolites on aston (working copy in Lumos folder)
+  mtab_targets = c(245.0954388,
+                 195.087652,
+                 175.1189521,
+                 147.0764186,
+                 150.058325,
+                 116.070605,
+                 106.0498695,
+                 120.0655196,
+                 222.0972136)
+
+}
+  
+  
+  save.image(NameOfFile)
+
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  fig.path = saveFigures)
+```
+
+
+```{r getSampleInfo, eval = TRUE}
+
+#use the sequence file to get the sample information for all the samples
+wDir <-  "C:/Users/krista/Documents/Current projects/Kujawinski_Lumos/RawData/2017_0719 Method Development 1_batch 2/sequenceFiles_fromMethods/"
+all <- readWorksheetFromFile(paste0(wDir,"mtab_MethodDev_071917_sequence_batch2.KL.xlsx"),sheet = 1)
+putDataHere <-data.frame()
+
+
+for(i in 1:length(all$File.Name)) {
+  h <- all$File.Name[i]
+  #paste0 will strip out the spaces; make the full filename here    
+  h <-paste0(pre,h,ext)
+  
+  #this will pick up the right row in mzdatafiles
+  m <- match(basename(h),basename(xs@filepaths))
+  if (!is.na(m)) {
+    tData <- all[i,]
+    if (nrow(putDataHere)==0) {
+      putDataHere <- tData
+      } else {
+    putDataHere[m,] <-tData
+    }
+    rm(tData)
+  }   
+  rm(h,m)
+}   
+
+rm(all) #keep this clean...
+
+```
+
+
+```{r setupDataStorage, eval = TRUE}
+
+#df <- data.frame(number = seq.int(length(mzdatafiles)))
+calcVars <- c('nMZ','nMS2','avg_scans_perPrecursor','avg_peaks_per_MS2')
+
+df <- data.frame(matrix(ncol=length(calcVars),nrow=length(mzdatafiles)))
+rownames(df) <- basename(mzdatafiles)
+colnames(df) <- c(calcVars)
+
+#match up the rows of the data frame with putDataHere to get ancillary information 
+#multiple step process in R it seems...(though for this example idx1==idx2)
+#first find the intersect
+z <- intersect(rownames(df),paste0(putDataHere$File.Name,'.mzML'))
+#want the index into rownames(df) 
+idx1 <- match(z,rownames(df))
+#then find the index into putDataHere
+idx2 <- match(z,paste0(putDataHere$File.Name,'.mzML'))
+
+
+```
+
+##msPurity: general parameters
+
+```{r numberMZ, eval = TRUE, fig.height = 8,fig.width = 10}
+
+#probably a better way to do this....
+
+for (i in 1:length(mzdatafiles)) {
+  
+  one <- as.data.frame(xs@peaks)
+  temp <- one[one$sample == i,]
+  
+  df$nMZ[i] = dim(temp)[1]
+  rm(one,temp)
+}
+
+#plot.new()
+par(oma = c(5,5,5,5))
+x = putDataHere$File.Name[idx2]
+y = df$nMZ[idx1]
+
+#don't really need a new data.frame
+d <- data.frame(x=x, y=y, collision = putDataHere$cType[idx1],
+                energy = putDataHere$cEnergy[idx1], detection = putDataHere$dType[idx1])
+
+# p <- ggplot(d, aes(x=x, y=y, colour=interaction(treatment,replicate))) +
+#   geom_point(aes(shape = treatment), size=10)
+p <- ggplot(d, aes(x=x, y=y, colour=interaction(collision,energy))) +
+  geom_point(aes(shape = detection), size=8)
+p <- p + scale_color_brewer(palette = 'Set3')
+
+p <- p + labs(y = "# of MZ values")
+#p <- p + scale_x_continuous(breaks=c(1:dim(df)[1]),labels = putDataHere$FileName[idx2])
+p <- p + theme_bw()
+p <- p +  theme(plot.background = element_blank(),
+   panel.grid.major = element_blank())
+# p <- p +  theme(plot.background = element_blank(),
+#    panel.grid.major = element_blank(),
+#    panel.grid.minor = element_blank(),
+#    panel.border = element_blank())
+p <- p + theme(axis.text.x=element_text(angle = -45, hjust = 0))
+p
+   
+
+```
+
+
+```{r numberMS2, eval = TRUE, fig.height = 8,fig.width = 10}
+
+#count # of MS2 for each datafile...find the number of rows for each datafile and get length
+
+for (i in 1:length(mzdatafiles)) {
+  w <- which(pa@puritydf$fileid==i)
+  df$nMS2[i] = length(w)
+  rm(w)
+
+}
+  
+#I think this is best:
+x = putDataHere$File.Name[idx2]
+y = df$nMS2[idx1]
+
+d <- data.frame(x=x, y=y, collision = putDataHere$cType[idx1],
+                energy = putDataHere$cEnergy[idx1], detection = putDataHere$dType[idx1])
+
+p <- ggplot(d, aes(x=x, y=y, colour=interaction(collision,energy))) +
+  geom_point(aes(shape = detection), size=8)
+p <- p + scale_color_brewer(palette = 'Set3')
+
+p <- p + labs(y = "# of MS2 scans")
+p <- p + theme_bw()
+p <- p +  theme(plot.background = element_blank(),
+   panel.grid.major = element_blank())
+p <- p + theme(axis.text.x=element_text(angle = -45, hjust = 0))
+p
+   
+```
+
+
+
+```{r avg_per_percursor, eval = TRUE, fig.height = 8,fig.width = 10}
+#Average #of MS2 scans per MS1 scan
+#get average value (# peaks) for each file separately and put into df
+
+for (ii in 1:length(mzdatafiles)) {
+  ww = which(pa@puritydf$fileid==ii)
+  tData <- pa@puritydf[ww,] #want ww rows, all columns
+  
+  npre = as.data.frame(unique(tData$precursorScanNum))
+
+  for (i in 1:dim(npre)[1]) {
+    w = which(tData$precursorNearest==npre[i,1])
+    npre[i,2] <- length(w)
+    rm(w)
+  }
+  
+  #now get the average for this file
+  df$avg_scans_perPrecursor[ii] <- mean(npre$V2)
+  rm(ww, tData,npre)
+    
+}
+
+#plot up the results
+#plot.new()
+x = putDataHere$File.Name[idx2]
+y = df$avg_scans_perPrecursor[idx1]
+
+d <- data.frame(x=x, y=y, collision = putDataHere$cType[idx1],
+                energy = putDataHere$cEnergy[idx1], detection = putDataHere$dType[idx1])
+
+p <- ggplot(d, aes(x=x, y=y, colour=interaction(collision,energy))) +
+  geom_point(aes(shape = detection), size=8)
+p <- p + scale_color_brewer(palette = 'Set3')
+
+p <- p + labs(y = "average # of MS2 scans per MS1")
+p <- p + theme_bw()
+p <- p +  theme(plot.background = element_blank(),
+   panel.grid.major = element_blank())
+p <- p + theme(axis.text.x=element_text(angle = -45, hjust = 0))
+p
+
+
+```
+
+##msPurity: only with the standards
+
+
+```{r iPurity_score, eval = TRUE, fig.height = 4,fig.width = 5}
+
+#export the mz values: this does into puritydf (missed that yesterday)
+oneList <- pa@puritydf[,'precursorMZ'] #data.frame syntax
+maxErr <- 2
+  
+mean_iPurity <- data.frame(matrix(ncol=length(mtab_targets),nrow=length(mzdatafiles)))
+rownames(mean_iPurity) <- basename(mzdatafiles)
+colnames(mean_iPurity) <- c(mtab_names)
+
+#i <- 1
+for (i in 1:length(mtab_targets)) {
+	#this will find the index of the rows I want (based on mz values)
+	r <- FindAllWithinError(oneList,maxErr,mtab_targets[i])
+
+	if (length(r) > 0 ) {
+		#show me the information for one compound...
+		out <- pa@puritydf[r,]
+
+		#in my example, out$seqNum is the scan number for the MS2 spectra
+		#in my example, out$precursorScanNum or out$precursorNearest are the MS1 scans
+
+		#so now, where the hell is the MS2 information from the purity results?
+		#in the variable out I just created, the first column is 'pid' ...can use 
+		#this to find the information about the grouped MS2 spectra in 
+		#pa@grped_df
+		#in my example, the first row in out has pid = 172256:
+		#newdata <- pa@grped_df[which(pa@grped_df$pid==172256),]
+
+		#can get all the MS2 from one group:
+		#oneGroup <- pa@grped_df[which(pa@grped_df$grpid==753),]
+
+		#then, once I have mapped the MS2 fragments to the MS1 data using 
+		#frag4feature, I can (hopefully) map back to the original MS2 fragments
+		#oneSet <- pa@grped_ms2$'753'
+
+		tMean <- aggregate(out[,'iPurity'],list(out$filename),mean)
+		idx <- match(tMean$Group.1,rownames(mean_iPurity))
+		mean_iPurity[idx,i] <- tMean$x
+		rm(tMean,idx)
+		 
+		#colnames(getMean) <- c('filename','mean_iPurity')
+		#I think I finally have this...each row in oneGroup will have the MS2 scan
+		#number given in 'precurMtchID' which is actually the MS2 scan. This row
+		#corresponds to the section within oneSet. So, for row #1 in oneGroup I can
+		#go to row #1 of oneSet to actually see the MS2 spectra.
+
+		#plot up one set of iPurity scores for this mtab only
+		#try ggplot
+		#jpeg('test.jpg')
+		#jpeg(paste0('iPurityPlot_',pos_mtabNames[i],'.jpg'))
+		p10 <- ggplot(out,aes(x=out$filename,y=out$iPurity)) + geom_boxplot() 
+		p10 <- p10 + ggtitle(paste0("iPurity, only for ", mtab_names[i])) 
+		p10 <- p10 + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+		print(p10)
+
+		#dev.off()
+	}
+}
+
+
+```
+
+
+```{r iPurity_allStandards, eval = TRUE, fig.height = 8,fig.width = 10}
+
+plot.new()
+#par(mfrow=c(2,1)) 
+par(mar = c(12, 4, 3, 3)) #bottom, left, top, right
+#plot(df_score[,'taurocholic acid'],pch=16,col = useColors, cex=5)
+boxplot(t(mean_iPurity),las=2,ylab = 'iPurity', 
+	main = 'iPurity for all standards, dots are outliers')
+
+```
+
+
+```{r peaks_per_MS2, eval = TRUE, fig.height = 4,fig.width = 5}
+
+#export the mz values: this does into puritydf (missed that yesterday)
+oneList <- pa@puritydf[,'precursorMZ'] #data.frame syntax
+maxErr <- 2
+  
+mean_ipkNm <- data.frame(matrix(ncol=length(mtab_targets),nrow=length(mzdatafiles)))
+rownames(mean_ipkNm) <- basename(mzdatafiles)
+colnames(mean_ipkNm) <- c(mtab_names)
+
+#i <- 1
+for (i in 1:length(mtab_targets)) {
+	#this will find the index of the rows I want (based on mz values)
+	r <- FindAllWithinError(oneList,maxErr,mtab_targets[i])
+
+	if (length(r) > 0 ) {
+		#show me the information for one compound...
+		out <- pa@puritydf[r,]
+
+		tMean <- aggregate(out[,'ipkNm'],list(out$filename),mean)
+		idx <- match(tMean$Group.1,rownames(mean_ipkNm))
+		mean_ipkNm[idx,i] <- tMean$x
+		rm(tMean,idx)
+		 
+		p10 <- ggplot(out,aes(x=out$filename,y=out$ipkNm)) + geom_boxplot() 
+		p10 <- p10 + ggtitle(paste0("ipkNm, only for ", mtab_names[i])) 
+		p10 <- p10 + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+		print(p10)
+
+		#dev.off()
+	}
+}
+```
+
+
+```{r ipkNm_allStandards, eval = TRUE, fig.height = 8,fig.width = 10}
+
+#plot.new()
+#par(mfrow=c(2,1)) 
+par(mar = c(12, 4, 3, 3)) #bottom, left, top, right
+#plot(df_score[,'taurocholic acid'],pch=16,col = useColors, cex=5)
+boxplot(t(mean_ipkNm),las=2,ylab = 'iPeak number (aka number of peaks in MS2 scan)', 
+	main = 'mean iPeak Number for all standards, dots are outliers')
+
+```
+
+
+```{r nMS2_forEachStandard, eval = TRUE, fig.height = 4, fig.width = 5}
+
+oneList <- pa@puritydf[,'precursorMZ'] #data.frame syntax
+maxErr <- 2
+  
+number_MS2_perStd <- data.frame(matrix(ncol=length(mtab_targets),nrow=length(mzdatafiles)))
+rownames(number_MS2_perStd) <- basename(mzdatafiles)
+colnames(number_MS2_perStd) <- c(mtab_names)
+
+#i <- 1
+for (i in 1:length(mtab_targets)) {
+	#this will find the index of the rows I want (based on mz values)
+	r <- FindAllWithinError(oneList,maxErr,mtab_targets[i])
+
+	if (length(r) > 0 ) {
+		#show me the information for one compound...
+		out <- pa@puritydf[r,]
+
+		tData <- aggregate(out[,'pid'],list(out$filename),length)
+		idx <- match(tData$Group.1,rownames(number_MS2_perStd))
+		number_MS2_perStd[idx,i] <- tData$x
+		rm(tData,idx)
+		 
+	}
+}
+
+
+```
+
+
+```{r numberMS2_perStandard, eval = TRUE, fig.height = 8,fig.width = 10}
+
+##leave the blanks out of this bc they have lots of MS2 scans for the standards
+
+z <- intersect(rownames(number_MS2_perStd),paste0(putDataHere$File.Name,'.mzML'))
+#want the index into rownames(df) 
+idx1 <- match(z,rownames(number_MS2_perStd))
+#then find the index into putDataHere
+idx2 <- match(z,paste0(putDataHere$File.Name,'.mzML'))
+
+number_MS2_perStd[idx1,'collision'] <- putDataHere$cType[idx2]
+number_MS2_perStd[idx1,'energy'] <- putDataHere$cEnergy[idx2]
+number_MS2_perStd[idx1,'detection'] <- putDataHere$dType[idx2]
+
+
+#need reshape2 to use melt
+number_MS2_perStd$id = rownames(number_MS2_perStd) #need this to keep the file names
+toPlot2<- melt(number_MS2_perStd,value.name = 'nMS2_perStd',variable.name = 'standard')
+
+#make the plot with ggplot
+m1 <- ggplot(toPlot2,aes(x=toPlot2$id, y=toPlot2$nMS2_perStd,colour = toPlot2$standard)) +
+    geom_point(aes(shape = toPlot2$detection), size=6)
+m1 <- m1 + scale_color_brewer(palette = 'Paired')
+m1 <- m1 + ggtitle('nMS2_perStd')
+m1 <- m1 + theme_bw()
+m1 <- m1 +  theme(plot.background = element_blank(),
+   panel.grid.major = element_blank())
+m1 <- m1 + theme(axis.text.x=element_text(angle = -45, hjust = 0))
+print(m1)
+
+
+```
+
+
+##compMS2Miner results: scores from the in silico fragmentation
+
+```{r compResults,eval = TRUE, fig.height = 8,fig.width = 10}
+
+df_score <- data.frame(matrix(ncol=length(mtab_targets),nrow=length(mzdatafiles)))
+rownames(df_score) <- basename(mzdatafiles)
+colnames(df_score) <- c(mtab_names)
+
+df_nHits <- df_score
+
+
+for (im in 1:length(mzdatafiles)) {
+	#get the oneComp_2 variable for each file...
+	load(paste0(basename(mzdatafiles[im]),'_mined.RData'))
+	
+	#pull out the pieces I need for each search
+	compMS2_object <- oneComp_2$oneComp
+	peakTable <- oneComp_2$peakTable
+	
+	oneList <- peakTable$mzmed
+	maxErr <- 4
+	
+	for (i in 1:length(mtab_names)) {  
+		r <- FindAllWithinError(oneList,maxErr,mtab_targets[i])
+		#make the string:
+		##careful...will show multiple matches, which is good and bad
+		#add steps to through one at a time 10/23/2017
+		tFile <- paste0('CC_',r)
+		if (length(tFile) > 1) {
+		  #gather up the multiple scores...average them?
+		  nH = length(tFile)
+		  df_nHits[im,i] = nH
+		  #go through one at time
+		  temp_score <- data.frame(matrix(ncol=length(mtab_targets),nrow=nH))
+		  colnames(temp_score) <- c(mtab_names)
+		  
+		  for (ih in 1:nH) {
+      		#then use the string to search in compMS2_object for the results
+      		#look for MetFrag hits in the compMS2Miner object
+      		f <- paste0('compMS2_object@inSilico$MetFrag$',tFile[ih],'$DBname')
+      		fs <- paste0('compMS2_object@inSilico$MetFrag$',tFile[ih])
+      
+      		names = eval(parse(text=f))
+      		
+      		if (is.null(names)){
+      			#message(paste0(mtab_names[i],': no match')) 
+      		} else {
+      			fn <- match(mtab_names[i],tolower(names))
+      			ot <- eval(parse(text = fs))
+      			#then pull the score and ranked match from the 'ot' table
+      			temp_score[ih,mtab_names[i]] = ot[fn,'Score']
+      			
+      		} #close searching for names
+		    }
+		  #try averaging the values...
+		  d <- colMeans(temp_score,na.rm=TRUE)
+		  df_score[im,mtab_names[i]] <- d[mtab_names[i]]
+		  rm(d)
+		  
+		} else {
+		  
+  		#then use the string to search in compMS2_object for the results
+  		#look for MetFrag hits in the compMS2Miner object
+  		f <- paste0('compMS2_object@inSilico$MetFrag$',tFile,'$DBname')
+  		fs <- paste0('compMS2_object@inSilico$MetFrag$',tFile)
+  
+  		names = eval(parse(text=f))
+  		
+  		if (is.null(names)){
+  			#message(paste0(mtab_names[i],': no match')) 
+  		} else {
+  			fn <- match(mtab_names[i],tolower(names))
+  			ot <- eval(parse(text = fs))
+  			#then pull the score and ranked match from the 'ot' table
+  			df_score[im,mtab_names[i]] = ot[fn,'Score']
+  			df_nHits[im,mtab_names[i]] = 1
+  		} #close searching for names
+		}
+		
+	}
+
+}
+
+#add in the other variables before I do the plotting
+z <- intersect(rownames(df_score),paste0(putDataHere$File.Name,'.mzML'))
+#want the index into rownames(df) 
+idx1 <- match(z,rownames(df_score))
+#then find the index into putDataHere
+idx2 <- match(z,paste0(putDataHere$File.Name,'.mzML'))
+
+df_score_only <- df_score #use for averaging
+
+df_score[idx1,'collision'] <- putDataHere$cType[idx2]
+df_score[idx1,'energy'] <- putDataHere$cEnergy[idx2]
+df_score[idx1,'detection'] <- putDataHere$dType[idx2]
+
+toPlot_scores <- df_score #keep separate to get good plot in the rest of this chunk
+df_score[idx1,'concStd'] <-putDataHere$stdConc_ng_per_ml[idx2]
+
+
+#need reshape2 to use melt
+toPlot_scores$id = rownames(toPlot_scores) #need this to keep the file names
+toPlot<- melt(toPlot_scores,value.name = 'MetFragScore',variable.name = 'standard')
+
+
+m <- ggplot(toPlot,aes(x=toPlot$id, y=toPlot$MetFragScore,colour = toPlot$standard)) +
+    geom_point(aes(shape = toPlot$detection), size=6)
+
+
+m <- m + scale_color_brewer(palette = 'Paired')
+m <- m + ggtitle('MetFrag score, standards')
+m <- m + theme_bw()
+m <- m +  theme(plot.background = element_blank(),
+   panel.grid.major = element_blank())
+m <- m + theme(axis.text.x=element_text(angle = -45, hjust = 0))
+print(m)
+
+
+```
+
+```{r finalSave, eval = TRUE}
+
+save.image(NameOfFile)
+```
+
+
