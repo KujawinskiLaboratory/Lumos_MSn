@@ -5,6 +5,13 @@ Krista Longnecker
 
 Testing different parameters on the Lumos to see which set of fragmentation options will serve our needs best. Using several parameters to consider what will be the best choice. How many MS2 scans we get? Is orbitrap or ion trap detection best when using the in silico fragmentation tools? How clean is the peak in the MS1 scan? 
 
+Run the files in this order:
+--> run Lumos_MDexp1b_neg_mspurity to get the aligned XCMS data
+--> run Lumos_MDexp1b_neg_miner to get the MS2 fragments for each sample (as RDdata files)
+--> combineTools_neg
+
+General methods:
+
 Peak picking using the centWave algorithm (Tautenhahn et al., 2008) within XCMS (Smith et al., 2006), followed by the MSpurity program from Lawson et al. (2017) and the compMS2Miner program from Edmands et al. (2017).
 
 
