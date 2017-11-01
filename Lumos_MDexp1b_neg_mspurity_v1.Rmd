@@ -1,0 +1,130 @@
+Processing the FT-LC MDexp1b samples. Lumos method development.
+This is the file for the negative ion mode data 
+
+Krista Longnecker
+October 12, 2017
+========================================================
+
+Go ahead and load up some of the parameters:
+```{r Settings, eval=TRUE, results = 'hide'}
+
+#most basic - only peak picking
+library(xcms)
+library(XLConnect)
+library(MSnbase)
+library(msPurity)
+library(vioplot) #not convinced this will be useful
+library(ggplot2)
+library(RColorBrewer)
+
+```
+
+
+```{r getPath, eval = FALSE}
+#run this by itself AFTER copying the clipboard from windows to get the path...can then paste into the next chunk
+
+usePath <- gsub("\\\\","/",readClipboard())
+
+```
+
+
+Now go ahead and do the peak picking, or load in the existing file...peak picking can be time consuming and it easier to only do that once
+
+```{r GettingData, eval = TRUE}
+
+usePath <- "C:/Users/krista/Documents/Current projects/Kujawinski_Lumos/RawData/2017_0719 Method Development 1_batch 2/RAWfiles/neg/mzML_noThreshold"
+
+ext <- ".mzML"
+pre <- paste0(usePath,"/")
+
+mzdatafiles <- list.files(usePath,recursive = FALSE, full.names=TRUE,
+                          pattern = paste0("\\",ext))
+
+snowparam <- SnowParam(workers = 4, type = "SOCK")
+
+#no need to repeat the peak picking. This will be for the full set of samples.
+if(0) {
+    load("MDv1_mspurity_neg_2017.08.29_v2.Rimage")
+    
+    
+  } else {
+    #For negative ion mode: ppm = 2,3 seems best
+    #For positive ion mode: ppm = 3,4 seems best
+    xs<-xcmsSet(mzdatafiles, method = "centWave",ppm = 4 ,snthresh = 10,
+      prefilter = c(3,500), mzCenterFun = "wMean",integrate = 2, 
+      verbose.columns = TRUE, peakwidth=c(20,80), fitgauss= TRUE, noise = 500, 
+      mzdiff=-0.005,BPPARAM=snowparam) #,sleep = 0.00001)
+}
+
+#dev.off()
+
+
+```
+
+
+```{r settingFileNames}
+#put this here bc if we load in data already with peak picking...that will bring in a NameOfFile
+
+# #setup the filenames all in one place bc easier...
+nDate <- "2017.10.19_v1"
+nBase <- "MDv1b_mspurity_neg"
+fName_allPeaks <- paste0(nBase,'_listAllPeaks.',nDate,'.csv')
+fName_aligned <- paste0(nBase,'_aligned.',nDate,'.csv')
+fName_peaksPicked <- paste0(nBase, '_picked.',nDate, '.pdf')
+NameOfFile <- paste0(nBase,"_",nDate,".Rimage")
+
+rm(nDate,nBase)
+
+
+```
+
+```{r doMSpurity,eval = TRUE}
+
+pa <- purityA(mzdatafiles)
+
+xset <- xcms::group(xs)
+xset <- xcms::retcor(xset)
+xset <- xcms::group(xset)
+
+pa <- frag4feature(pa,xset)
+
+```
+
+
+```{r working, eval = TRUE}
+
+source("FindAllWithinError.r")
+oneList <- pa@grped_df$mz
+maxErr <- 4
+  
+#this will find the index of the rows I want (based on mz values)
+r <- FindAllWithinError(oneList,maxErr,241.0829951)
+
+#show me the table for one compound...
+#can check - the precurMtchID value in the table I am creating named 'out' is the scan number
+#from the RAW/XCalibur file
+out <- pa@grped_df[r,]
+
+#in 'out', the 'grpid' column has the information needed to get the MS2 spectra
+aList <- pa@grped_ms2
+
+
+```
+
+
+And save the final steps
+
+```{r lastSave, eval =TRUE}
+#can plot some variables       
+#windows() #brings up a box for plotting that is outside RStudio (works better here)
+#plotEICs(an,pspec=2,maxlabel=5)
+#plotPsSpectrum(xsaC,2,maxlabel=5)
+
+#export the data to the CSV file
+#write.csv(getPeaklist(an),file=fName_aligned) 
+save.image(NameOfFile)
+#
+
+
+```
+

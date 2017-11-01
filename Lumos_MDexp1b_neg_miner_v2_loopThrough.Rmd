@@ -1,0 +1,144 @@
+Run CompMS2miner on one file at a time and see if we find the standards in each run
+This will require these two files:
+('oneFile_peakPickToMetrag_v3.r')
+('FindAllWithinError.r')
+
+Swap to negative ion mode version
+Catch the compound that I have no name for in MetFrag
+Krista Longnecker
+October 23, 2017
+========================================================
+
+Go ahead and load up some of the parameters:
+```{r Settings, eval=TRUE, results = 'hide'}
+
+#most basic - only peak picking (some of these are only used within the script)
+library(xcms)
+library(snow)
+library(CAMERA)
+library(compMS2Miner)
+library(MetMSLine)
+library(XLConnect)
+
+#this seems to help issues with continually have to rinstall Rtools (8/2017)
+#Sys.setenv(PATH="%PATH%;C:/RBuildTools/3.4/bin;c:/RBuildTools/3.4/ming3_32/bin")
+library(devtools)
+devtools::find_rtools()
+
+
+```
+
+
+```{r settingFileNames, eval = TRUE}
+#put this here bc if we load in data already with peak picking...that will bring in a NameOfFile that will overwrite the newest options
+
+# #setup the filenames all in one place bc easier...
+nDate <- "2017.10.23_v1"
+nBase <- "MDv1b_neg"
+NameOfFile <- paste0(nBase,"_",nDate,".Rimage")
+
+rm(nDate,nBase)
+
+usePath <- "C:/Users/krista/Documents/Current projects/Kujawinski_Lumos/RawData/2017_0719 Method Development 1_batch 2/RAWfiles/neg/mzML_noThreshold"
+  
+
+ext <- ".mzML"
+pre <- paste0(usePath,"/")
+
+mzdatafiles <- list.files(usePath,recursive = FALSE, full.names=TRUE,
+                          pattern = paste0("\\",ext))
+
+```
+
+```{r prepareStandardsSearch, eval = TRUE}
+
+source("FindAllWithinError.r")
+
+neg_mtabNames = cbind("biotin","citric acid","XX",
+                    "l-malic acid","orotic acid",
+                    "succinic acid","taurocholic acid","thymidine")
+negTargets = c(243.080885877909,
+191.019726127909,
+302.986332457909,
+133.014246827909,
+155.009830147909,
+117.019332207909,
+514.284396227909,
+241.082995067909)
+
+#Make an empty data frame...nrow will be length(mzdatafiles)
+results <- data.frame(matrix(vector(),length(mzdatafiles),
+                                 length(neg_mtabNames)))
+colnames(results) <- neg_mtabNames
+rownames(results) <- basename(mzdatafiles)
+
+
+```
+
+
+```{r peakPicking_to_Metfrag, eval = TRUE}
+
+source("oneFile_peakPickToMetfrag_v3.r")
+
+#make a list to file with the retuls from the compMS2Miner analysis
+makeList <- list()
+
+for (ii in 1:length(mzdatafiles)) {  
+
+  oneFile <- mzdatafiles[ii]
+  ionMode = 'neg'
+  #ionMode = 'pos'
+
+  oneComp_2 <- fullOutput_v2(oneFile,ionMode,usePath) ##will take a while
+  
+  
+  compMS2_object <- oneComp_2$oneComp
+  peakTable <- oneComp_2$peakTable
+
+  oneList <- peakTable$mzmed
+  maxErr <- 4
+  
+    for (i in 1:length(negTargets)) {
+      r <- FindAllWithinError(oneList,maxErr,negTargets[i])
+      #make the string:
+      tFile <- paste0('CC_',r)
+      
+      #then use the string to search in compMS2_object for the results
+      #look for MetFrag hits in the compMS2Miner object
+      f <- paste0('compMS2_object@inSilico$MetFrag$',tFile,'$DBname')
+      
+      names = eval(parse(text=f))
+      names
+      #can have no match...put the results in the data.frame
+      if (is.null(names)){
+        #message('no match')
+        results[ii,i] <- FALSE
+      } else {
+        fn <- match(neg_mtabNames[i],tolower(names)) #grep allows too many matches
+        
+        #message('yes')
+        #added 8/27/2017...need to rerun pos
+        if (is.na(fn)) {
+          results[ii,i] <- 'wrong'
+        } else if (fn > 0) {
+          results[ii,i] <- TRUE
+        } else if (i==3) {
+          results[ii,i] <= 'found'
+        }
+        rm(fn)
+      }
+      rm(r,tFile,f,names)
+  }
+  ##export the compMS2Miner results
+  save(oneComp_2,file = paste0(basename(oneFile),'_mined.RData')) 
+  makeList[[ii]] <- oneComp_2
+}
+
+```
+
+```{r finalSave, eval = TRUE}
+
+save.image(NameOfFile)
+
+```
+
