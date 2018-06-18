@@ -1,0 +1,156 @@
+Run CompMS2miner on one file at a time and see if we find the standards in each run
+This will require these two files:
+('oneFile_peakPickToMetrag_v3.r')
+('FindAllWithinError.r')
+
+Krista Longnecker
+May 9, 2018
+========================================================
+
+Go ahead and load up some of the parameters:
+```{r Settings, eval=TRUE, results = 'hide'}
+
+#most basic - only peak picking (some of these are only used within the script)
+library(xcms)
+library(snow)
+library(CAMERA)
+library(compMS2Miner)
+library(MetMSLine)
+library(XLConnect)
+
+#this seems to help issues with continually have to rinstall Rtools (8/2017)
+#Sys.setenv(PATH="%PATH%;C:/RBuildTools/3.4/bin;c:/RBuildTools/3.4/ming3_32/bin")
+library(devtools)
+devtools::find_rtools()
+
+
+```
+
+
+```{r settingFileNames, eval = TRUE}
+#put this here bc if we load in data already with peak picking...that will bring in a NameOfFile that will overwrite the newest options
+
+# #setup the filenames all in one place bc easier...
+nDate <- "2018.05.09_v1"
+nBase <- "KCI_testingHCDlevels_miner_pos"
+NameOfFile <- paste0(nBase,"_",nDate,".Rimage")
+
+rm(nDate,nBase)
+
+usePath <- "C:/Users/krista/Documents/Current projects/Kujawinski_Lumos/RawData/2017_0719 Method Development 2/RAWfiles/mzML_Lumos_withMSn_pos"
+  
+ext <- ".mzML"
+pre <- paste0(usePath,"/")
+
+mzdatafiles <- list.files(usePath,recursive = FALSE, full.names=TRUE,
+                          pattern = paste0("\\",ext))
+
+```
+
+```{r prepareStandardsSearch, eval = TRUE}
+
+source("FindAllWithinError.r")
+
+mtabNames = cbind("biotin","caffeine","l-arginine","l-glutamine",
+                  "l-methionine","l-proline","l-serine","l-threonine",
+                  "n-acetyl-d-glucosamine")
+
+#hack from list of metabolites on aston (working copy in Lumos folder)
+posTargets = c(245.0954388,
+195.087652,
+175.1189521,
+147.0764186,
+150.058325,
+116.070605,
+106.0498695,
+120.0655196,
+222.0972136)
+
+#Make an empty data frame...nrow will be length(mzdatafiles)
+results <- data.frame(matrix(vector(),length(mzdatafiles),length(mtabNames)))
+colnames(results) <- mtabNames
+rownames(results) <- basename(mzdatafiles)
+
+
+```
+
+
+```{r peakPicking_to_Metfrag, eval = TRUE}
+
+source("oneFile_peakPickToMetfrag_v3.r")
+#will be a loop once I get I check all this out
+
+#make a list to file with the retuls from the compMS2Miner analysis
+makeList <- list()
+
+#for (ii in 8) {
+for (ii in 1:length(mzdatafiles)) {  #uncomment last bracket as well
+#for (ii in 1:2) {
+  
+  oneFile <- mzdatafiles[ii]
+  #ionMode = 'neg'
+  ionMode = 'pos'
+
+  oneComp_2 <- fullOutput_v2(oneFile,ionMode,usePath) ##will take a while
+  
+  compMS2_object <- oneComp_2$oneComp
+  peakTable <- oneComp_2$peakTable
+
+  oneList <- peakTable$mzmed
+  maxErr <- 4
+  
+    for (i in 1:length(posTargets)) {
+      r <- FindAllWithinError(oneList,maxErr,posTargets[i])
+      #make the string:
+      ##careful...will show multiple matches, which is good and bad
+      tFile <- paste0('CC_',r)
+      
+      #then use the string to search in compMS2_object for the results
+      #look for MetFrag hits in the compMS2Miner object
+      f <- paste0('compMS2_object@inSilico$MetFrag$',tFile,'$DBname')
+      
+      names = eval(parse(text=f))
+      #can have no match...put the results in the data.frame
+      if (is.null(names)){
+        #message('no match')
+        results[ii,i] <- FALSE
+      } else {
+        fn <- match(mtabNames[i],tolower(names))
+        #message('yes'); changed the order 10/13/2017
+        if (is.na(fn)) {
+          results[ii,i] <- 'wrong'
+        } else if (fn > 0) {
+          results[ii,i] <- TRUE
+        } else if (i==3) {
+          results[ii,i] <= 'found'
+        }
+        rm(fn)
+        
+        # if (fn > 0) {
+        #   results[ii,i] <- TRUE
+        # } else if (is.na(fn)) {
+        #   results[ii,i] <- 'wrong'
+        # } else if (i==3) {
+        #   results[ii,i] <= 'found'
+        # }
+        # rm(fn)
+      }
+      rm(r,tFile,f,names)
+
+    }
+  #export the compMS2Miner results
+  save(oneComp_2,file = paste0(basename(oneFile),'_mined.RData')) 
+  makeList[[ii]] <- oneComp_2
+  #save.image(NameOfFile) #put save in the loop bc issues with crashing
+}
+
+```
+
+
+
+```{r finalSave, eval = TRUE}
+
+save.image(NameOfFile)
+
+```
+
