@@ -1,7 +1,7 @@
 # Lumos
-R code to test fragmentation parameters on the Lumos
-Krista Longnecker
-1 November 2017
+R code to test fragmentation parameters on the Lumos\
+Krista Longnecker\
+1 November 2017\
 Update on 11 October 2023: this will be moved to the organization now called KujawinskiLaboratory. All commits prior to this point were by Krista Longnecker, using the account name KujawinskiLaboratory.
  
 
