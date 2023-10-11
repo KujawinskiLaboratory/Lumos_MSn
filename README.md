@@ -3,7 +3,7 @@ R code to test fragmentation parameters on the Lumos
 Krista Longnecker
 1 November 2017
 Update on 11 October 2023: this will be moved to the organization now called KujawinskiLaboratory. All commits prior to this point were by Krista Longnecker, using the account name KujawinskiLaboratory.
-
+ 
 
 Testing different parameters on the Lumos to see which set of fragmentation options will serve our needs best. Using several parameters to consider what will be the best choice. How many MS2 scans we get? Is orbitrap or ion trap detection best when using the in silico fragmentation tools? How clean is the peak in the MS1 scan? 
 
